@@ -60,15 +60,25 @@ LIMIT 10;
 
 -- Solution for task 3 (from file 'spend_on_category.sql') --
 -- Optimizations:
--- 1. 
+-- 1. shrinks payment before the inventory/category fan-out
+
+WITH pay AS (
+    SELECT
+        rental_id,
+        SUM(amount) AS amount
+    FROM payment
+
+    GROUP BY
+        rental_id
+)
 
 SELECT
     c.name AS category,
-    SUM(p.amount) AS total_spent
-FROM payment AS p
+    SUM(pay.amount) AS total_spent
+FROM pay
 
 JOIN rental AS r
-    ON r.rental_id = p.rental_id
+    ON r.rental_id = pay.rental_id
 JOIN inventory AS i
     ON i.inventory_id = r.inventory_id
 JOIN film_category AS fc
@@ -80,86 +90,66 @@ GROUP BY
     c.category_id,
     c.name
 ORDER BY
-    total_spent DESC
+    total_spent DESC;
 
 
--- Solution for task 4 --
+-- Solution for task 4 (from file 'films_not_in_inventory.sql') --
+-- No optimizations needed, just another way to solve the task
 
 SELECT
     f.title
-FROM film AS f
+FROM film f
 
-LEFT JOIN inventory AS i
-    ON i.film_id = f.film_id
-WHERE
-    i.film_id IS NULL;
-
-
--- Solution for task 5 --
-
-WITH actor_films AS (
-    SELECT
-        a.actor_id,
-        a.first_name,
-        a.last_name,
-        fa.film_id
-    FROM film_actor AS fa
-	
-    JOIN actor AS a
-        ON fa.actor_id = a.actor_id
-),
-film_children AS (
-    SELECT
-        fc.film_id
-    FROM film_category AS fc
-	
-    JOIN category AS c
-        ON fc.category_id = c.category_id
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM inventory i
 
     WHERE
-        c.name = 'Children'
-),
-actor_counts AS (
-    SELECT
-        af.actor_id,
-        af.first_name,
-        af.last_name,
-        COUNT(af.film_id) AS films_amount
-    FROM actor_films AS af
-	
-    JOIN film_children AS fc
-        ON fc.film_id = af.film_id
-	
-    GROUP BY
-        af.actor_id,
-        af.first_name,
-        af.last_name
-),
-ranked_actors AS (
-    SELECT
-        first_name,
-        last_name,
-        films_amount,
-        DENSE_RANK() OVER (ORDER BY films_amount DESC) AS actor_rank
-    FROM actor_counts
-)
+        i.film_id = f.film_id
+);
+
+
+-- Solution for task 5 (from file 'popular_actors_children_category.sql') --
+-- Optimizations:
+-- 1. less expensive dense rank
 
 SELECT
     first_name,
     last_name,
     films_amount
-FROM ranked_actors
+FROM (
+    SELECT
+        a.first_name,
+        a.last_name,
+        COUNT(*) AS films_amount,
+        DENSE_RANK() OVER (ORDER BY COUNT(*) DESC) AS actor_rank
+    FROM actor a
+
+    JOIN film_actor fa
+        ON fa.actor_id = a.actor_id
+    JOIN film_category fc
+        ON fc.film_id = fa.film_id
+    JOIN category c
+        ON c.category_id = fc.category_id
+    
+    WHERE
+        c.name = 'Children'
+    GROUP BY
+        a.actor_id,
+        a.first_name,
+        a.last_name
+) ranked
 
 WHERE
     actor_rank <= 3
-
 ORDER BY
     films_amount DESC,
     last_name,
-    first_name
+    first_name;
 
 
--- Solution for task 6 --
+-- Solution for task 6 (from file 'amount_inactive_customers.sql') --
+-- No optimizations needed
 
 SELECT
 	city.city,
@@ -172,71 +162,61 @@ JOIN customer AS cus
 JOIN city
 	ON city.city_id = addr.city_id
 
-GROUP BY city.city
+GROUP BY
+    city.city
+ORDER BY
+    inctive_amount DESC;
 
-ORDER BY inctive_amount DESC
 
+-- Solution for task 7 (from file 'best_category_for_each_city.sql') --
+-- Optimizations:
+-- 1. first of all filter out cities and only then do join with cities table
+-- 2. one less join (JOIN film)
 
--- Solution for task 7 --
-
-WITH rental_hours AS (
+WITH cities AS (
     SELECT
-        city.city,
+        city_id,
+        city
+    FROM city
+    
+    WHERE
+        city ILIKE 'a%' OR
+        city LIKE '%-%'
+),
+rental_hours AS (
+    SELECT
+        ci.city,
         cat.name AS category,
-        SUM(
-            EXTRACT(EPOCH FROM (r.return_date - r.rental_date)) / 3600
-        ) AS hours_in_rental
-    FROM rental AS r
-	
-    JOIN customer AS cus
-        ON cus.customer_id = r.customer_id
+        SUM(EXTRACT(EPOCH FROM (r.return_date - r.rental_date)) / 3600) AS hours_in_rental
+    FROM cities ci
+
     JOIN address AS addr
-        ON addr.address_id = cus.address_id
-    JOIN city
-        ON city.city_id = addr.city_id
-	
+        ON addr.city_id = ci.city_id
+    JOIN customer AS cus
+        ON cus.address_id = addr.address_id
+    JOIN rental AS r
+        ON r.customer_id = cus.customer_id
     JOIN inventory AS i
         ON i.inventory_id = r.inventory_id
-    JOIN film AS f
-        ON f.film_id = i.film_id
     JOIN film_category AS fc
-        ON fc.film_id = f.film_id
+        ON fc.film_id = i.film_id
     JOIN category AS cat
         ON cat.category_id = fc.category_id
     
-	WHERE
+    WHERE
         r.return_date IS NOT NULL
-        AND (
-            city.city ILIKE 'a%'
-            OR city.city LIKE '%-%'
-        )
-
     GROUP BY
-        city.city,
+        ci.city,
         cat.name
-),
-ranked_categories AS (
-    SELECT
-        city,
-        category,
-        hours_in_rental,
-        DENSE_RANK() OVER (
-            PARTITION BY city
-            ORDER BY hours_in_rental DESC
-        ) AS category_rank
-    FROM rental_hours
 )
 
-SELECT
+SELECT DISTINCT ON (city)
     city,
     category,
     hours_in_rental
-FROM ranked_categories
-
-WHERE
-    category_rank = 1
+FROM rental_hours
 
 ORDER BY
     city,
-    category
-
+    hours_in_rental DESC,
+    category;
