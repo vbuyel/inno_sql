@@ -16,7 +16,7 @@ FROM (
 JOIN category c
     ON c.category_id = s.category_id
 ORDER BY
-    c.name DESC;
+    s.films_amount DESC;
 
 
 -- Solution for task 2 (from file 'actor_rental.sql') --
@@ -79,7 +79,8 @@ GROUP BY
     c.category_id,
     c.name
 ORDER BY
-    total_spent DESC;
+    total_spent DESC
+LIMIT 1;
 
 
 -- Solution for task 4 (from file 'films_not_in_inventory.sql') --
@@ -155,23 +156,33 @@ ORDER BY
 -- 1. first of all filter out cities and only then do join with cities table
 -- 2. one less join (JOIN film)
 
-WITH cities AS (
+WITH cities_starts_with_a AS (
     SELECT
         city_id,
         city
     FROM city
     WHERE
-        city ILIKE 'a%' OR
+        city ILIKE 'a%'
+),
+cities_with_hyphens AS (
+    SELECT
+        city_id,
+        city
+    FROM city
+    WHERE
         city LIKE '%-%'
 ),
 rental_hours AS (
     SELECT
-        ci.city,
+        a_ci.city AS city_starts_with_a,
+        h_ci.city AS city_with_hyphens,
         cat.name AS category,
         SUM(EXTRACT(EPOCH FROM (r.return_date - r.rental_date)) / 3600) AS hours_in_rental
-    FROM cities ci
+    FROM cities_starts_with_a a_ci
+    LEFT JOIN cities_with_hyphens h_ci
+        ON h_ci.city_id = a_ci.city_id
     JOIN address AS addr
-        ON addr.city_id = ci.city_id
+        ON addr.city_id = a_ci.city_id
     JOIN customer AS cus
         ON cus.address_id = addr.address_id
     JOIN rental AS r
@@ -185,15 +196,18 @@ rental_hours AS (
     WHERE
         r.return_date IS NOT NULL
     GROUP BY
-        ci.city,
+        city_starts_with_a,
+        city_with_hyphens,
         cat.name
 )
-SELECT DISTINCT ON (city)
-    city,
+SELECT DISTINCT ON (city_starts_with_a, city_with_hyphens)
+    city_starts_with_a,
+    city_with_hyphens,
     category,
     hours_in_rental
 FROM rental_hours
 ORDER BY
-    city,
+    city_starts_with_a,
+    city_with_hyphens,
     hours_in_rental DESC,
     category;
