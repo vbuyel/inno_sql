@@ -10,14 +10,11 @@ FROM (
         category_id,
         COUNT(*) AS films_amount
     FROM film_category
-
     GROUP BY
         category_id
 ) s
-
 JOIN category c
     ON c.category_id = s.category_id
-
 ORDER BY
     c.name DESC;
 
@@ -31,24 +28,20 @@ WITH film_rentals AS (
         i.film_id,
         COUNT(*) AS rental_count
     FROM inventory i
-
     JOIN rental r
         ON r.inventory_id = i.inventory_id
     GROUP BY
         i.film_id
 )
-
 SELECT
     a.first_name,
     a.last_name,
     SUM(fr.rental_count) AS total_rentals
 FROM actor AS a
-
 JOIN film_actor AS fa
     ON fa.actor_id = a.actor_id
 JOIN film_rentals AS fr
     ON fr.film_id = fa.film_id
-
 GROUP BY
     a.actor_id,
     a.first_name,
@@ -67,16 +60,13 @@ WITH pay AS (
         rental_id,
         SUM(amount) AS amount
     FROM payment
-
     GROUP BY
         rental_id
 )
-
 SELECT
     c.name AS category,
     SUM(pay.amount) AS total_spent
 FROM pay
-
 JOIN rental AS r
     ON r.rental_id = pay.rental_id
 JOIN inventory AS i
@@ -85,7 +75,6 @@ JOIN film_category AS fc
     ON fc.film_id = i.film_id
 JOIN category AS c
     ON c.category_id = fc.category_id
-
 GROUP BY
     c.category_id,
     c.name
@@ -99,11 +88,9 @@ ORDER BY
 SELECT
     f.title
 FROM film f
-
 WHERE NOT EXISTS (
     SELECT 1
     FROM inventory i
-
     WHERE
         i.film_id = f.film_id
 );
@@ -124,14 +111,12 @@ FROM (
         COUNT(*) AS films_amount,
         DENSE_RANK() OVER (ORDER BY COUNT(*) DESC) AS actor_rank
     FROM actor a
-
     JOIN film_actor fa
         ON fa.actor_id = a.actor_id
     JOIN film_category fc
         ON fc.film_id = fa.film_id
     JOIN category c
         ON c.category_id = fc.category_id
-    
     WHERE
         c.name = 'Children'
     GROUP BY
@@ -139,7 +124,6 @@ FROM (
         a.first_name,
         a.last_name
 ) ranked
-
 WHERE
     actor_rank <= 3
 ORDER BY
@@ -156,12 +140,10 @@ SELECT
 	COUNT(*) FILTER (WHERE cus.active = 1) AS active_amount,
 	COUNT(*) FILTER (WHERE cus.active = 0) AS inctive_amount
 FROM address AS addr
-
 JOIN customer AS cus
 	ON cus.address_id = addr.address_id
 JOIN city
 	ON city.city_id = addr.city_id
-
 GROUP BY
     city.city
 ORDER BY
@@ -178,7 +160,6 @@ WITH cities AS (
         city_id,
         city
     FROM city
-    
     WHERE
         city ILIKE 'a%' OR
         city LIKE '%-%'
@@ -189,7 +170,6 @@ rental_hours AS (
         cat.name AS category,
         SUM(EXTRACT(EPOCH FROM (r.return_date - r.rental_date)) / 3600) AS hours_in_rental
     FROM cities ci
-
     JOIN address AS addr
         ON addr.city_id = ci.city_id
     JOIN customer AS cus
@@ -202,20 +182,17 @@ rental_hours AS (
         ON fc.film_id = i.film_id
     JOIN category AS cat
         ON cat.category_id = fc.category_id
-    
     WHERE
         r.return_date IS NOT NULL
     GROUP BY
         ci.city,
         cat.name
 )
-
 SELECT DISTINCT ON (city)
     city,
     category,
     hours_in_rental
 FROM rental_hours
-
 ORDER BY
     city,
     hours_in_rental DESC,
